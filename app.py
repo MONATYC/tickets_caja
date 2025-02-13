@@ -94,13 +94,24 @@ def generar_y_guardar_tabla_resumen(datos_ventas, output_dir):
 
     df["Tipo de venta"] = df["Descripció"].apply(categorizar_venta)
 
+    # Función para convertir strings numéricos a float
+    def convertir_a_float(valor):
+        valor = str(valor)
+        if "," in valor:
+            # Si hay coma, primero eliminar puntos y luego reemplazar coma por punto
+            valor = valor.replace(".", "").replace(",", ".")
+        else:
+            # Si no hay coma, solo eliminar puntos
+            valor = valor.replace(".", "")
+        return float(valor)
+
     # Conversión de tipos (¡IMPORTANTE! Asegurarse de que los nombres de columna coinciden)
     for col in [
         "Import",
         "Cost",
     ]:  # Asegurate de que los nombres de las columnas son correctos
         if col in df.columns:  # Verificar si la columna existe
-            df[col] = df[col].astype(str).str.replace(",", ".").astype(float)
+            df[col] = df[col].apply(convertir_a_float)
 
     # Agrupación y resumen
     resumen = (

@@ -5,3 +5,4 @@ __pycache__/
 venv/
 .vscode/
 app_legacy.py
+test.PDF
