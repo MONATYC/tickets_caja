@@ -33,22 +33,23 @@ def extraer_texto_de_pdf(archivo_pdf):
         st.error(f"Error al procesar el PDF: {e}")
     return texto
 
+
 # Función para extraer datos de ventas del PDF usando GenAI
 
 
 def extraer_datos_ventas(texto_pdf):
-    modelo = genai.GenerativeModel('gemini-1.5-flash')
+    modelo = genai.GenerativeModel("gemini-2.0-pro-exp-02-05")
     prompt = f"""
-    Extrae los datos de ventas para cada artículo del siguiente contenido PDF.
-    Ignora cualquier fila de totales o subtotales, así como las fechas que puedan aparecer entre el encabezado y el contenido de la tabla.
-    Para cada artículo, proporciona la siguiente información:
-    - Quant.
-    - Article
-    - Descripció
-    - Base
-    - %Iva
-    - Import IVA
-    - PVP
+Extrae los datos de ventas para cada artículo del documento PDF proporcionado.  Ignora las filas que contengan totales (como "Total Client" o "Total Vendes") y cualquier texto que no sea parte de la tabla principal de artículos (fechas, encabezados de página, etc.).  Concéntrate en extraer datos de las siguientes columnas:
+
+- **Article:**  El código o número de identificación del artículo.
+- **Descripció:** La descripción completa del artículo.  Asegúrate de capturar toda la descripción, incluso si ocupa varias palabras.
+- **Quantitat:**  La cantidad vendida del artículo.  Asegúrate de que este valor sea tratado como un número (entero). Incluye la unidad "U" al final.
+- **Import:**  El importe total de venta para esa cantidad de artículo.  Asegúrate de que este valor sea tratado como un número (con decimales). Separa los decimales con coma (,).
+- **Cost:** El coste del artículo.  Asegúrate de que este valor sea tratado como un número (con decimales). Separa los decimales con coma (,).
+- **% Marge:** El porcentaje de margen de beneficio del artículo.  Asegúrate de que este valor sea tratado como un número (con decimales). Separa los decimales con coma (,).
+
+Para cada fila de la tabla que represente un artículo individual (no un total), extrae los datos de estas columnas y proporciona la información en el siguiente formato, estrictamente, y solo el output, nada mas.
 
     Presenta los datos como una lista de diccionarios en Python, donde cada diccionario representa un artículo.
     No incluyas marcadores de código (```) en tu respuesta.
@@ -57,12 +58,14 @@ def extraer_datos_ventas(texto_pdf):
     {texto_pdf}
     """
 
-    with st.spinner('Extrayendo datos de ventas...'):
+    with st.spinner("Extrayendo datos de ventas..."):
         respuesta = modelo.generate_content(
-            prompt, generation_config=genai.types.GenerationConfig(temperature=0))
+            prompt, generation_config=genai.types.GenerationConfig(temperature=0)
+        )
 
-    texto_limpio = respuesta.text.strip().replace(
-        '```python', '').replace('```', '').strip()
+    texto_limpio = (
+        respuesta.text.strip().replace("```python", "").replace("```", "").strip()
+    )
 
     try:
         datos = eval(texto_limpio)
@@ -70,12 +73,14 @@ def extraer_datos_ventas(texto_pdf):
             return datos
         else:
             raise ValueError(
-                "La respuesta no tiene el formato esperado de una lista de diccionarios.")
+                "La respuesta no tiene el formato esperado de una lista de diccionarios."
+            )
     except Exception as e:
         st.error(f"Error al procesar la respuesta: {e}")
         st.text("Respuesta recibida:")
         st.code(texto_limpio)
         return []
+
 
 # Función para generar tabla resumen
 
@@ -88,39 +93,40 @@ def generar_tabla_resumen(datos_ventas):
 
     # Crear categorías para la clasificación
     def categorizar_venta(descripcion):
-        if 'VISITA' in descripcion.upper():
-            return 'Visitas'
-        elif 'APADRINAMENT' in descripcion.upper():
-            return 'Apadrinamiento'
-        elif 'DONACIÓ' in descripcion.upper():
-            return 'Donación'
+        if "VISITA" in descripcion.upper():
+            return "Visitas"
+        elif "APADRINAMENT" in descripcion.upper():
+            return "Apadrinamiento"
+        elif "DONACIÓ" in descripcion.upper():
+            return "Donación"
         else:
-            return f'Merchandising ({df["%Iva"][df["Descripció"] == descripcion].values[0]}% IVA)'
+            return f"Merchandising ({df['%Iva'][df['Descripció'] == descripcion].values[0]}% IVA)"
 
-    df['Tipo de venta'] = df['Descripció'].apply(categorizar_venta)
+    df["Tipo de venta"] = df["Descripció"].apply(categorizar_venta)
 
     # Convertir columnas numéricas a float
-    for col in ['Base', 'Import IVA', 'PVP']:
-        df[col] = df[col].str.replace(',', '.').astype(float)
+    for col in ["Base", "Import IVA", "PVP"]:
+        df[col] = df[col].str.replace(",", ".").astype(float)
 
     # Agrupar los datos por Tipo de venta
-    resumen = df.groupby('Tipo de venta').agg(
-        Base=('Base', 'sum'),
-        IVA=('Import IVA', 'sum'),
-        PVP=('PVP', 'sum')
-    ).reset_index()
+    resumen = (
+        df.groupby("Tipo de venta")
+        .agg(Base=("Base", "sum"), IVA=("Import IVA", "sum"), PVP=("PVP", "sum"))
+        .reset_index()
+    )
 
     # Redondear los valores a 2 decimales
     resumen = resumen.round(2)
 
     # Calcular el total
     total = resumen.sum().round(2)
-    total['Tipo de venta'] = 'Total'
+    total["Tipo de venta"] = "Total"
 
     # Añadir el total al resumen usando concat
     resumen = pd.concat([resumen, pd.DataFrame([total])], ignore_index=True)
 
     return resumen
+
 
 # Función actualizada para mostrar resultados en tablas y ofrecer descarga
 
@@ -138,7 +144,7 @@ def mostrar_resultados(datos_ventas):
         df_articulos.to_csv(csv_path, index=False)
 
         # Botón de descarga para la tabla de artículos
-        csv_articulos = df_articulos.to_csv(index=False).encode('utf-8')
+        csv_articulos = df_articulos.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="Descargar CSV de artículos",
             data=csv_articulos,
@@ -153,12 +159,14 @@ def mostrar_resultados(datos_ventas):
             st.dataframe(resumen, use_container_width=True)
 
             # Guardar CSV de resumen en la carpeta Output
-            resumen_filename = f"resumen_ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            resumen_filename = (
+                f"resumen_ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            )
             resumen_path = os.path.join(output_dir, resumen_filename)
             resumen.to_csv(resumen_path, index=False)
 
             # Botón de descarga para la tabla resumen
-            csv_resumen = resumen.to_csv(index=False).encode('utf-8')
+            csv_resumen = resumen.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="Descargar CSV de resumen",
                 data=csv_resumen,
@@ -170,12 +178,12 @@ def mostrar_resultados(datos_ventas):
     else:
         st.warning("No se encontraron datos de ventas para mostrar.")
 
+
 # Función principal de la aplicación
 
 
 def main():
-    st.set_page_config(
-        page_title="Extractor de Datos de Ventas PDF", layout="wide")
+    st.set_page_config(page_title="Extractor de Datos de Ventas PDF", layout="wide")
 
     st.title("📊 Extractor de Datos de Ventas PDF")
 
@@ -207,7 +215,8 @@ def main():
                 st.error("No se pudieron extraer datos de ventas del PDF.")
         else:
             st.error(
-                "No se pudo extraer texto del PDF. Por favor, verifica que el archivo sea legible.")
+                "No se pudo extraer texto del PDF. Por favor, verifica que el archivo sea legible."
+            )
 
 
 if __name__ == "__main__":
