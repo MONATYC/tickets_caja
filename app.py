@@ -6,6 +6,7 @@ import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 import io
+import xlsxwriter
 
 # Cargar la API key desde el archivo .env
 load_dotenv()
