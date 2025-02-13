@@ -100,7 +100,7 @@ def generar_tabla_resumen(datos_ventas):
         elif "DONACIÓ" in descripcion.upper():
             return "Donación"
         else:
-            return f"Merchandising ({df['%Iva'][df['Descripció'] == descripcion].values[0]}% IVA)"
+            return f"Merchandising ({df['%Iva'][df['Descripció'] == descripcion].values[0]}% Marge"
 
     df["Tipo de venta"] = df["Descripció"].apply(categorizar_venta)
 
