@@ -82,6 +82,7 @@ Para cada fila de la tabla que represente un artículo individual (no un total),
         return []
 
 
+"""
 # Función para generar tabla resumen
 
 
@@ -177,7 +178,7 @@ def mostrar_resultados(datos_ventas):
             st.warning("No se pudieron generar los datos del resumen.")
     else:
         st.warning("No se encontraron datos de ventas para mostrar.")
-
+"""
 
 # Función principal de la aplicación
 
@@ -210,7 +211,7 @@ def main():
                 st.success("¡Datos extraídos con éxito!")
 
                 st.header("Resultados")
-                mostrar_resultados(datos_ventas)
+                # mostrar_resultados(datos_ventas)
             else:
                 st.error("No se pudieron extraer datos de ventas del PDF.")
         else:
