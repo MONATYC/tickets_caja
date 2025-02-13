@@ -5,6 +5,7 @@ import PyPDF2
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
+import io
 
 # Cargar la API key desde el archivo .env
 load_dotenv()
@@ -15,10 +16,6 @@ if not api_key:
     st.stop()
 
 genai.configure(api_key=api_key)
-
-# Crear la carpeta Output si no existe
-output_dir = os.path.join(os.getcwd(), "Output")
-os.makedirs(output_dir, exist_ok=True)
 
 
 # Función para extraer texto del PDF
@@ -74,105 +71,66 @@ Contenido del PDF:
         return []
 
 
-# Función para generar tabla resumen (MODIFICADA para guardar directamente)
-def generar_y_guardar_tabla_resumen(datos_ventas, output_dir):
-    if not datos_ventas:
-        return
-
-    df = pd.DataFrame(datos_ventas)
-
-    # Categorización (adaptar según sea necesario)
-    def categorizar_venta(descripcion):
-        if "VISITA" in descripcion.upper():
-            return "Visitas"
-        elif "APADRINAMENT" in descripcion.upper():
-            return "Apadrinamiento"
-        elif "DONACIÓ" in descripcion.upper():
-            return "Donación"
-        else:
-            return f"Merchandising ({df['% Marge'][df['Descripció'] == descripcion].values[0]}% Marge"
-
-    df["Tipo de venta"] = df["Descripció"].apply(categorizar_venta)
-
-    # Función para convertir strings numéricos a float
-    def convertir_a_float(valor):
-        valor = str(valor)
-        if "," in valor:
-            # Si hay coma, primero eliminar puntos y luego reemplazar coma por punto
-            valor = valor.replace(".", "").replace(",", ".")
-        else:
-            # Si no hay coma, solo eliminar puntos
-            valor = valor.replace(".", "")
-        return float(valor)
-
-    # Conversión de tipos (¡IMPORTANTE! Asegurarse de que los nombres de columna coinciden)
-    for col in [
-        "Import",
-        "Cost",
-    ]:  # Asegurate de que los nombres de las columnas son correctos
-        if col in df.columns:  # Verificar si la columna existe
-            df[col] = df[col].apply(convertir_a_float)
-
-    # Agrupación y resumen
-    resumen = (
-        df.groupby("Tipo de venta")
-        .agg(
-            Import=("Import", "sum"), Cost=("Cost", "sum")
-        )  # Los campos a sumar en la agrupación
-        .reset_index()
-    )
-    resumen = resumen.round(2)
-
-    # Calcular el total
-    total = resumen.sum(numeric_only=True).round(2)  # Suma solo las columnas numéricas
-    total["Tipo de venta"] = "Total"
-    resumen = pd.concat([resumen, pd.DataFrame([total])], ignore_index=True)
-
-    # Guardar CSV de resumen
-    resumen_filename = f"resumen_ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    resumen_path = os.path.join(output_dir, resumen_filename)
-    resumen.to_csv(resumen_path, index=False)
-    return resumen_filename  # Devolver el nombre del archivo
-
-
-# Función principal de la aplicación (SIMPLIFICADA)
 def main():
-    st.set_page_config(page_title="Extractor de Datos de Ventas PDF", layout="wide")
-    st.title("Extractor de Datos de Ventas PDF")
+    st.set_page_config(
+        page_title="Asistente de Ventas - Arantxa",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
+    # Personalización del header
+    st.title("👋 ¡Hola Arantxa!")
     st.markdown("""
-    Sube un PDF para extraer los datos de ventas y generar archivos CSV.
-    Los archivos se guardarán en la carpeta 'Output'.
+    Esta aplicación está diseñada especialmente para ayudarte a procesar los datos de ventas de manera más eficiente.
+    Simplemente sube tu PDF y podrás visualizar y descargar los datos en formato Excel.
     """)
 
-    archivo_pdf = st.file_uploader("Selecciona tu archivo PDF", type="pdf")
+    # Sidebar con instrucciones
+    with st.sidebar:
+        st.header("📝 Instrucciones")
+        st.markdown("""
+        1. Sube tu archivo PDF de ventas
+        2. Revisa los datos extraídos en la tabla
+        3. Si todo está correcto, descarga el archivo Excel
+        """)
+        st.markdown("---")
+        st.markdown(
+            "💡 **Tip**: Puedes ordenar la tabla haciendo clic en los encabezados"
+        )
+
+    archivo_pdf = st.file_uploader("📄 Selecciona tu archivo PDF de ventas", type="pdf")
 
     if archivo_pdf is not None:
         texto_pdf = extraer_texto_de_pdf(archivo_pdf)
         if texto_pdf:
             datos_ventas = extraer_datos_ventas(texto_pdf)
             if datos_ventas:
-                st.success("Datos extraídos. Generando archivos CSV...")
+                st.success("✨ ¡Datos extraídos correctamente!")
 
-                # Guardar CSV de artículos
-                articulos_filename = (
-                    f"articulos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-                )
-                articulos_path = os.path.join(output_dir, articulos_filename)
+                # Crear DataFrame y mostrar previsualización
                 df_articulos = pd.DataFrame(datos_ventas)
-                df_articulos.to_csv(articulos_path, index=False)
-                st.write(f"Archivo de artículos guardado: {articulos_filename}")
 
-                # Generar y guardar tabla resumen
-                nombre_archivo_resumen = generar_y_guardar_tabla_resumen(
-                    datos_ventas, output_dir
+                # Mostrar la tabla con estilo
+                st.subheader("📊 Tabla de Artículos")
+                st.dataframe(df_articulos, use_container_width=True, hide_index=True)
+
+                # Botón de descarga Excel
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                    df_articulos.to_excel(writer, sheet_name="Artículos", index=False)
+
+                excel_data = output.getvalue()
+                st.download_button(
+                    label="📥 Descargar datos en Excel",
+                    data=excel_data,
+                    file_name=f"ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
-                if nombre_archivo_resumen:
-                    st.write(f"Archivo de resumen guardado: {nombre_archivo_resumen}")
 
             else:
-                st.error("No se pudieron extraer datos de ventas.")
+                st.error("❌ No se pudieron extraer datos de ventas.")
         else:
-            st.error("No se pudo extraer texto del PDF.")
+            st.error("❌ No se pudo extraer texto del PDF.")
 
 
 if __name__ == "__main__":
