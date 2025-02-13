@@ -105,13 +105,13 @@ def generar_tabla_resumen(datos_ventas):
     df["Tipo de venta"] = df["Descripció"].apply(categorizar_venta)
 
     # Convertir columnas numéricas a float
-    for col in ["Base", "Import IVA", "PVP"]:
+    for col in ["Import", "Import IVA", "PVP"]:
         df[col] = df[col].str.replace(",", ".").astype(float)
 
     # Agrupar los datos por Tipo de venta
     resumen = (
         df.groupby("Tipo de venta")
-        .agg(Base=("Base", "sum"), IVA=("Import IVA", "sum"), PVP=("PVP", "sum"))
+        .agg(Import=("Import", "sum"), IVA=("Import IVA", "sum"), PVP=("PVP", "sum"))
         .reset_index()
     )
 
