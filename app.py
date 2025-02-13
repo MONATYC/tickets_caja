@@ -20,9 +20,8 @@ genai.configure(api_key=api_key)
 output_dir = os.path.join(os.getcwd(), "Output")
 os.makedirs(output_dir, exist_ok=True)
 
+
 # Función para extraer texto del PDF
-
-
 def extraer_texto_de_pdf(archivo_pdf):
     texto = ""
     try:
@@ -35,27 +34,22 @@ def extraer_texto_de_pdf(archivo_pdf):
 
 
 # Función para extraer datos de ventas del PDF usando GenAI
-
-
 def extraer_datos_ventas(texto_pdf):
-    modelo = genai.GenerativeModel("gemini-2.0-pro-exp-02-05")
+    modelo = genai.GenerativeModel("gemini-2.0-pro-exp-02-05")  # O el modelo que uses
     prompt = f"""
 Extrae los datos de ventas para cada artículo del documento PDF proporcionado.  Ignora las filas que contengan totales (como "Total Client" o "Total Vendes") y cualquier texto que no sea parte de la tabla principal de artículos (fechas, encabezados de página, etc.).  Concéntrate en extraer datos de las siguientes columnas:
 
 - **Article:**  El código o número de identificación del artículo.
-- **Descripció:** La descripción completa del artículo.  Asegúrate de capturar toda la descripción, incluso si ocupa varias palabras.
-- **Quantitat:**  La cantidad vendida del artículo.  Asegúrate de que este valor sea tratado como un número (entero). Incluye la unidad "U" al final.
-- **Import:**  El importe total de venta para esa cantidad de artículo.  Asegúrate de que este valor sea tratado como un número (con decimales). Separa los decimales con coma (,).
-- **Cost:** El coste del artículo.  Asegúrate de que este valor sea tratado como un número (con decimales). Separa los decimales con coma (,).
-- **% Marge:** El porcentaje de margen de beneficio del artículo.  Asegúrate de que este valor sea tratado como un número (con decimales). Separa los decimales con coma (,).
+- **Descripció:** La descripción completa del artículo.
+- **Quantitat:**  La cantidad vendida.  Entero. Incluye la unidad "U".
+- **Import:**  El importe total de venta.  Número con decimales (coma).
+- **Cost:** El coste del artículo. Número con decimales (coma).
+- **% Marge:** El porcentaje de margen. Número con decimales (coma).
 
-Para cada fila de la tabla que represente un artículo individual (no un total), extrae los datos de estas columnas y proporciona la información en el siguiente formato, estrictamente, y solo el output, nada mas.
+Formato de salida (lista de diccionarios en Python, sin marcadores de código):
 
-    Presenta los datos como una lista de diccionarios en Python, donde cada diccionario representa un artículo.
-    No incluyas marcadores de código (```) en tu respuesta.
-
-    Contenido del PDF:
-    {texto_pdf}
+Contenido del PDF:
+{texto_pdf}
     """
 
     with st.spinner("Extrayendo datos de ventas..."):
@@ -72,26 +66,22 @@ Para cada fila de la tabla que represente un artículo individual (no un total),
         if isinstance(datos, list) and all(isinstance(item, dict) for item in datos):
             return datos
         else:
-            raise ValueError(
-                "La respuesta no tiene el formato esperado de una lista de diccionarios."
-            )
+            raise ValueError("La respuesta no tiene el formato esperado.")
     except Exception as e:
         st.error(f"Error al procesar la respuesta: {e}")
         st.text("Respuesta recibida:")
-        st.code(texto_limpio)
+        st.code(texto_limpio)  # Mostrar respuesta para depuración
         return []
 
 
-# Función para generar tabla resumen
-
-
-def generar_tabla_resumen(datos_ventas):
+# Función para generar tabla resumen (MODIFICADA para guardar directamente)
+def generar_y_guardar_tabla_resumen(datos_ventas, output_dir):
     if not datos_ventas:
-        return None
+        return
 
     df = pd.DataFrame(datos_ventas)
 
-    # Crear categorías para la clasificación
+    # Categorización (adaptar según sea necesario)
     def categorizar_venta(descripcion):
         if "VISITA" in descripcion.upper():
             return "Visitas"
@@ -104,119 +94,74 @@ def generar_tabla_resumen(datos_ventas):
 
     df["Tipo de venta"] = df["Descripció"].apply(categorizar_venta)
 
-    # Convertir columnas numéricas a float
-    for col in ["Import", "Import IVA", "PVP"]:
-        df[col] = df[col].str.replace(",", ".").astype(float)
+    # Conversión de tipos (¡IMPORTANTE! Asegurarse de que los nombres de columna coinciden)
+    for col in [
+        "Import",
+        "Cost",
+    ]:  # Asegurate de que los nombres de las columnas son correctos
+        if col in df.columns:  # Verificar si la columna existe
+            df[col] = df[col].astype(str).str.replace(",", ".").astype(float)
 
-    # Agrupar los datos por Tipo de venta
+    # Agrupación y resumen
     resumen = (
         df.groupby("Tipo de venta")
-        .agg(Import=("Import", "sum"), IVA=("Import IVA", "sum"), PVP=("PVP", "sum"))
+        .agg(
+            Import=("Import", "sum"), Cost=("Cost", "sum")
+        )  # Los campos a sumar en la agrupación
         .reset_index()
     )
-
-    # Redondear los valores a 2 decimales
     resumen = resumen.round(2)
 
     # Calcular el total
-    total = resumen.sum().round(2)
+    total = resumen.sum(numeric_only=True).round(2)  # Suma solo las columnas numéricas
     total["Tipo de venta"] = "Total"
-
-    # Añadir el total al resumen usando concat
     resumen = pd.concat([resumen, pd.DataFrame([total])], ignore_index=True)
 
-    return resumen
+    # Guardar CSV de resumen
+    resumen_filename = f"resumen_ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    resumen_path = os.path.join(output_dir, resumen_filename)
+    resumen.to_csv(resumen_path, index=False)
+    return resumen_filename  # Devolver el nombre del archivo
 
 
-# Función actualizada para mostrar resultados en tablas y ofrecer descarga
-
-
-def mostrar_resultados(datos_ventas):
-    if datos_ventas:
-        # Mostrar tabla de todos los artículos
-        st.header("Tabla de Todos los Artículos")
-        df_articulos = pd.DataFrame(datos_ventas)
-        st.dataframe(df_articulos, use_container_width=True)
-
-        # Guardar CSV de artículos en la carpeta Output
-        csv_filename = f"articulos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        csv_path = os.path.join(output_dir, csv_filename)
-        df_articulos.to_csv(csv_path, index=False)
-
-        # Botón de descarga para la tabla de artículos
-        csv_articulos = df_articulos.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Descargar CSV de artículos",
-            data=csv_articulos,
-            file_name=csv_filename,
-            mime="text/csv",
-        )
-
-        # Mostrar tabla resumen de ventas
-        resumen = generar_tabla_resumen(datos_ventas)
-        if resumen is not None:
-            st.header("Tabla Resumen de Ventas")
-            st.dataframe(resumen, use_container_width=True)
-
-            # Guardar CSV de resumen en la carpeta Output
-            resumen_filename = (
-                f"resumen_ventas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            )
-            resumen_path = os.path.join(output_dir, resumen_filename)
-            resumen.to_csv(resumen_path, index=False)
-
-            # Botón de descarga para la tabla resumen
-            csv_resumen = resumen.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Descargar CSV de resumen",
-                data=csv_resumen,
-                file_name=resumen_filename,
-                mime="text/csv",
-            )
-        else:
-            st.warning("No se pudieron generar los datos del resumen.")
-    else:
-        st.warning("No se encontraron datos de ventas para mostrar.")
-
-
-# Función principal de la aplicación
-
-
+# Función principal de la aplicación (SIMPLIFICADA)
 def main():
     st.set_page_config(page_title="Extractor de Datos de Ventas PDF", layout="wide")
-
-    st.title("📊 Extractor de Datos de Ventas PDF")
-
+    st.title("Extractor de Datos de Ventas PDF")
     st.markdown("""
-    Esta aplicación te permite extraer datos de ventas de archivos PDF y visualizarlos de forma interactiva.
-    
-    ### Cómo usar:
-    1. Sube tu archivo PDF
-    2. Espera mientras procesamos y extraemos los datos
-    3. Explora los resultados en las tablas de artículos y resumen
-    4. Usa los botones de descarga para obtener los archivos CSV
-    5. Los archivos CSV también se guardan automáticamente en la carpeta 'Output'
+    Sube un PDF para extraer los datos de ventas y generar archivos CSV.
+    Los archivos se guardarán en la carpeta 'Output'.
     """)
 
     archivo_pdf = st.file_uploader("Selecciona tu archivo PDF", type="pdf")
 
     if archivo_pdf is not None:
         texto_pdf = extraer_texto_de_pdf(archivo_pdf)
-
         if texto_pdf:
             datos_ventas = extraer_datos_ventas(texto_pdf)
-
             if datos_ventas:
-                st.success("¡Datos extraídos con éxito!")
+                st.success("Datos extraídos. Generando archivos CSV...")
 
-                st.header("Resultados")
-                mostrar_resultados(datos_ventas)
+                # Guardar CSV de artículos
+                articulos_filename = (
+                    f"articulos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                )
+                articulos_path = os.path.join(output_dir, articulos_filename)
+                df_articulos = pd.DataFrame(datos_ventas)
+                df_articulos.to_csv(articulos_path, index=False)
+                st.write(f"Archivo de artículos guardado: {articulos_filename}")
+
+                # Generar y guardar tabla resumen
+                nombre_archivo_resumen = generar_y_guardar_tabla_resumen(
+                    datos_ventas, output_dir
+                )
+                if nombre_archivo_resumen:
+                    st.write(f"Archivo de resumen guardado: {nombre_archivo_resumen}")
+
             else:
-                st.error("No se pudieron extraer datos de ventas del PDF.")
+                st.error("No se pudieron extraer datos de ventas.")
         else:
-            st.error(
-                "No se pudo extraer texto del PDF. Por favor, verifica que el archivo sea legible."
-            )
+            st.error("No se pudo extraer texto del PDF.")
 
 
 if __name__ == "__main__":
